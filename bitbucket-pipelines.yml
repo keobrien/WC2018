@@ -1,0 +1,48 @@
+image: atlassian/default-image:latest
+
+pipelines:
+  default:
+    - step: &app-test-build
+        script:
+          - cat README.md
+
+  branches:
+    '{develop,master,rc_release_*}':
+      - step: &buidAndPush
+          script:
+            # Set variables to be used in the git commit
+            - git config --global user.email "$GIT_EMAIL";
+            - git config --global user.name "$GIT_USER";
+
+            # Get Pantheon repo
+            - git clone $REPO web
+            - cd web
+            - git fetch
+            # Ensure we're on the correct branch
+            - git checkout "$BITBUCKET_BRANCH"
+            - git pull
+
+            # Replace wp-content
+            - rm -fr wp-content
+            - cp -r ../wp-content .
+
+            # Commit and push results of build
+            - git status
+            - git add --all .
+            - git commit --allow-empty -m "Committing build artifacts from BitBucket pipeline build $BITBUCKET_BUILD_NUMBER"
+            - git push origin "$BITBUCKET_BRANCH"
+
+  tags:
+    '{release_*}':
+      - step: *buidAndPush
+         
+  custom:
+    registry-cleanup:
+      - step:
+          image: google/cloud-sdk:latest
+          script:
+            - echo "$DOCKER_PASSWORD_RW" > gcr_registry-rw.json
+            - helpers/purge-untagged-images.sh
+
+options:
+  docker: true
